@@ -94,8 +94,8 @@ extension MPU6050 {
     /// pin sampling and the Digital Low Pass Filter (DLPF) setting
     /// for both the gyroscopes and accelerometers.
     public var config: Config {
-        get { read(from: 0x14) }
-        set { write(to: 0x14, value: newValue) }
+        get { read(from: Config.address) }
+        set { write(to: Config.address, value: newValue) }
     }
 
     /// Gyroscope Output Rate = 8kHz when the DLPF is disabled
@@ -104,16 +104,19 @@ extension MPU6050 {
     public var gyroscopeOutputRate: UInt8 {
         config.digitalLowPassFilter.gyroFrameSync
     }
-    
+
     /// Describes the `CONFIG` register (`0x1A`) contents.
     public struct Config: I2CMutableRegisterData {
+        /// The register address
+        public static let address: UInt8 = 0x1A
+        
         /// The raw register value.
         public var registerValue: UInt8
-    
+
         public init(registerValue: UInt8) {
             self.registerValue = registerValue
         }
-    
+
         /// An external signal connected to the `FSYNC` pin can be sampled by configuring `externalSyncSetting`.
         ///
         /// Signal changes to the `FSYNC` pin are latched so that short strobes
@@ -127,13 +130,13 @@ extension MPU6050 {
             get { getBits(from: 3...5) }
             set { setBits(from: 3...5, to: newValue) }
         }
-    
+
         /// Configures the Digital Low Pass Filter for the accelerometer and gyro.
         public var digitalLowPassFilter: DigitalLowPassFilter {
             get { getBits(from: 0...2) }
             set { setBits(from: 0...2, to: newValue) }
         }
-    
+
         /// Indicates where the `FSYNC` bit will get stored.
         public enum ExternalSyncSetting: UInt8 {
             case disabled      = 0
@@ -145,7 +148,7 @@ extension MPU6050 {
             case accelYOutLow  = 6
             case accelZOutLow  = 7
         }
-    
+
         /// Configures the Digital Low-Pass Filter. Each setting has different
         /// settings for accelerometer and gyro bandwidth/delay/frame sync frequency.
         public enum DigitalLowPassFilter: UInt8 {
@@ -157,7 +160,7 @@ extension MPU6050 {
             case five          = 5
             case six           = 6
             case seven         = 7
-    
+
             /// Accelerometer Bandwidth (Hz)
             public var accelBandwidth: UInt16? {
                 switch self {
@@ -171,7 +174,7 @@ extension MPU6050 {
                 case .seven:   return nil
                 }
             }
-    
+
             /// Accelerometer Delay (ms)
             public var accelDelay: Float? {
                 switch self {
@@ -185,7 +188,7 @@ extension MPU6050 {
                 case .seven:   return nil
                 }
             }
-    
+
             /// Gyroscope Bandwidth (Hz)
             public var gyroBandwidth: UInt16? {
                 switch self {
@@ -199,7 +202,7 @@ extension MPU6050 {
                 case .seven:   return nil
                 }
             }
-    
+
             /// Gyroscope Delay (ms)
             public var gyroDelay: Float? {
                 switch self {
@@ -213,7 +216,7 @@ extension MPU6050 {
                 case .seven:   return nil
                 }
             }
-    
+
             /// Gyroscope Frame Sync (kHz)
             public var gyroFrameSync: UInt8 {
                 switch self {

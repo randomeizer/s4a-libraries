@@ -45,10 +45,19 @@ public extension I2CSlaveNode {
     /// - Parameter count: The number of contiguous registers to read from.
     /// - Returns: An `UnsafeRawBufferPointer` that points at the retrieved block of memory.
     func readBytes(from start: UInt8, count: UInt8) -> UnsafeRawBufferPointer {
-        guard count > 0 else {
+        guard
+            count > 0,
+            let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(count))
+        else {
             return UnsafeRawBufferPointer(start: nil, count: 0)
         }
-        let pointer = blockingReadMultipleI2CRegisters(slaveAddress: address.addressValue, registerStart: start, registerCount: count)
+
+        let pointer = blockingReadMultipleI2CRegisters(
+            slaveAddress: address.addressValue,
+            registerStart: start,
+            registerCount: count,
+            buffer: buffer
+        )
         return UnsafeRawBufferPointer(pointer)
     }
 
@@ -132,7 +141,7 @@ public protocol I2CMutableRegisterData: I2CRegisterData {
 /// - Parameter range: The range of bits to include in the mask. (eg. `0...3`)
 /// - Returns: The bitmasked `UInt8`.
 private func bitmask(from range: ClosedRange<UInt8>) -> UInt8 {
-    precondition(range.lowerBound < 8 && range.upperBound < 8, "Range must be between 0 and 7")
+    precondition(range.lowerBound < 8 && range.upperBound < 8)
 
     var mask: UInt8 = 0
 
@@ -297,7 +306,7 @@ extension UInt8: I2CMutableRegisterData {
 
     /// Initializes the value to `1` or `0` for `true` or `false`, respectively.
     ///
-    /// - Parameter value: The boolean value.    
+    /// - Parameter value: The boolean value.
     public init(_ value: Bool) {
         self = value ? 1 : 0
     }
@@ -311,5 +320,19 @@ extension UInt8: I2CMutableRegisterData {
     public var registerValue: UInt8 {
         get { self }
         set { self = newValue }
+    }
+}
+
+extension Int8: I2CMutableRegisterData {
+
+    /// Initialises the value based on a given register value.
+    public init(registerValue: UInt8) {
+        self = Int8(registerValue)
+    }
+
+    /// The current register value.
+    public var registerValue: UInt8 {
+        get { UInt8(self) }
+        set { self = Int8(newValue) }
     }
 }

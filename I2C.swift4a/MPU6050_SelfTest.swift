@@ -17,26 +17,26 @@ extension MPU6050 {
     /// Provides read-only access to a `SELF_TEST_X|Y|Z` value.
     fileprivate struct SelfTestXYZ: I2CRegisterData {
         let registerValue: UInt8
-    
+
         init(registerValue: UInt8) {
             self.registerValue = registerValue
         }
-    
+
         /// The high 3 bits of the `X|Y|ZA_TEST` value. The low 2 bits come from `SelfTestA`
         var accelHigh: UInt8 { getBits(from: 5...7) }
-    
+
         /// The full 5 bits of the `X|Y|ZG_TEST` value.
         var gyro: UInt8 { getBits(from: 0...4) }
     }
-    
+
     /// Provides read-only access to the `SELF_TEST_A` value, which provides the bottom 2 bits for `X|Y|ZA_TEST`
     fileprivate struct SelfTestA: I2CRegisterData {
         public let registerValue: UInt8
-    
+
         public init(registerValue: UInt8) {
             self.registerValue = registerValue
         }
-    
+
         var xLow: UInt8 { getBits(from: 0...1) }
         var yLow: UInt8 { getBits(from: 2...3) }
         var zLow: UInt8 { getBits(from: 4...5) }
@@ -47,22 +47,22 @@ extension MPU6050 {
         private let selfTestY: SelfTestXYZ
         private let selfTestZ: SelfTestXYZ
         private let selfTestA: SelfTestA
-    
+
         /// A five-bit unsigned integer.
         var accelX: UInt8 { selfTestX.accelHigh << 2 | selfTestA.xLow }
-    
+
         /// A five-bit unsigned integer.
         var accelY: UInt8 { selfTestY.accelHigh << 2 | selfTestA.yLow }
-    
+
         /// A five-bit unsigned integer.
         var accelZ: UInt8 { selfTestZ.accelHigh << 2 | selfTestA.zLow }
-    
+
         /// A five-bit unsigned integer.
         var gyroX: UInt8 { selfTestX.gyro }
-    
+
         /// A five-bit unsigned integer.
         var gyroY: UInt8 { selfTestY.gyro }
-    
+
         /// A five-bit unsigned integer.
         var gyroZ: UInt8 { selfTestY.gyro }
     }
@@ -186,7 +186,7 @@ extension MPU6050 {
     fileprivate struct SelfTestConfig {
         var gyroConfig: GyroConfig
         var accelConfig: AccelConfig
-    
+
         public init(
             gyro: (x: Bool, y: Bool, z: Bool) = (x: true, y: true, z: true),
             accel: (x: Bool, y: Bool, z: Bool) = (x: true, y: true, z: true)

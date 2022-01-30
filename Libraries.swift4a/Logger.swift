@@ -24,8 +24,10 @@ struct Logger {
 
     private var ready: Bool = true
 
-    private var plotted = false
-
+    /// Creates a new `Logger` instance.
+    /// - Parameters:
+    ///   - active: Indicates if the specific `Logger` is active.
+    ///   - period: Indicates the number of Ticks between outputs.
     init(active: Bool, period: Ticks) {
         self.active = active
         self.period = period
@@ -39,7 +41,6 @@ struct Logger {
 
         let now = ticks()
         ready = (period == 0 || now - prevTicks > period)
-
     }
 
     /// Prints the provided `StaticString`, if the `Logger` is active and ready to print.

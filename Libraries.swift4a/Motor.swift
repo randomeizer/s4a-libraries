@@ -79,3 +79,29 @@ public struct Motor {
     }
 }
 
+/* Snippets:
+ {
+        "Motor":[
+
+            {"partName":"Setup Motor",
+                "partCode":"// a motor with with the \nlet motor1 = Motor(speedPin: 3, directionPin: 4, forwardValue: LOW)"
+            },
+
+            {"partName":"Setup Rated Logger",
+                "partCode":"// setup Logger which will output every 1 second\nlet trickle = Logger(active: true, period: 1000)"
+            },
+
+            {"partName":"Print message",
+                "partCode":"firehose.println(\"Hello World\")"
+            },
+
+            {"partName":"Print message without a newline",
+                "partCode":"firehose.print(\"Hello World\")"
+            },
+
+            {"partName":"Plot values",
+                "partCode":"trickle.plot(\"Speed\", speed)\ntrickle.plot(\"Direction\", direction)\ntrickle.endPlot()"
+            },
+        ]
+ }
+*/
