@@ -109,7 +109,7 @@ extension MPU6050 {
     public struct Config: I2CMutableRegisterData {
         /// The register address
         public static let address: UInt8 = 0x1A
-        
+
         /// The raw register value.
         public var registerValue: UInt8
 

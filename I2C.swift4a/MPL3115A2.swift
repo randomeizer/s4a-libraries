@@ -368,11 +368,16 @@ extension MPL3115A2 {
             set { setBit(at: 1, to: newValue) }
         }
 
-        /// Software reset. This bit is used to activate the software reset. The boot mechanism can be enabled in STANDBY and ACTIVE mode.
+        /// Software reset. This bit is used to activate the software reset. The boot mechanism can be enabled in STANDBY
+        /// and ACTIVE mode.
         ///
-        /// When the boot bit is enabled the boot mechanism resets all functional block registers and loads the respective internal registers with default values.
+        /// When the boot bit is enabled the boot mechanism resets all functional block registers and loads the respective
+        /// internal registers with default values.
         ///
-        /// If the system was already in STANDBY mode, the reboot process will immediately begin, or else if the system was in ACTIVE mode, the boot mechanism will automatically transition the system from ACTIVE mode to STANDBY mode. Only then can the reboot process begin. The I2C communication system is reset to avoid accidental corrupted data access.
+        /// If the system was already in STANDBY mode, the reboot process will immediately begin, or else if the system was
+        /// in ACTIVE mode, the boot mechanism will automatically transition the system from ACTIVE mode to STANDBY mode.
+        /// Only then can the reboot process begin. The I2C communication system is reset to avoid accidental corrupted
+        /// data access.
         ///
         /// At the end of the boot process the RST bit is de-asserted to 0. Reading this bit will return a value of zero.
         public var softwareResetting: Bool {
@@ -380,7 +385,7 @@ extension MPL3115A2 {
             set { setBit(at: 2, to: newValue) }
         }
 
-        /// These bits select the oversampling ratio. Value is 2`OS`. The default value is `000`` for a ratio of `1`.
+        /// These bits select the oversampling ratio. Value is 2`OS`. The default value is `000` for a ratio of `1`.
         public var oversampleRatio: OversampleRatio {
             get { getBits(from: 3...5) }
             set { setBits(from: 3...5, to: newValue) }

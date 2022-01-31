@@ -6,6 +6,24 @@
 
 import AVR
 
+/// Creates an 8-bit bitmask within the specified range. The range must be between 0 and 7.
+///
+/// - Parameter range: The range of bits to include in the mask. (eg. `0...3`)
+/// - Returns: The bitmasked `UInt8`.
+@inlinable
+public func bitmask(from range: ClosedRange<UInt8>) -> UInt8 {
+    precondition(range.lowerBound < 8 && range.upperBound < 8)
+
+    var mask: UInt8 = 0
+
+    for _ in range {
+        mask = mask << 1 | 1
+    }
+    mask = mask << range.lowerBound
+
+    return mask
+}
+
 /// Represents a 7-bit I2C Slave Address
 public protocol I2CSlaveAddress {
     /// The raw 7-bit I2C slave address as a `UInt8`. The lowest 7 bits contain the address.
@@ -27,7 +45,7 @@ extension UInt8: I2CSlaveAddress {
 }
 
 /// Represents a connection to an I2C slave node (a.k.a. a device attached to the I2C bus).
-/// It has an `I2CSlaveAddress` and provides support methods for reading and writing to the device at that address.
+/// It has an ``I2CSlaveAddress`` and provides support methods for reading and writing to the device at that address.
 public protocol I2CSlaveNode {
     associatedtype Address: I2CSlaveAddress
 
@@ -37,13 +55,14 @@ public protocol I2CSlaveNode {
 
 // Adds support methods for read/write to the slave node.
 public extension I2CSlaveNode {
-    /// Reads sequential bytes from the register range, returning access to them via an `UnsafeRawBufferPointer`.
+    /// Reads sequential bytes from the register range, returning access to them via an ``UnsafeRawBufferPointer``.
     /// Not all I2C registers are necessarily contiguous, but if it's supported by the device, the block of bytes is
-    /// copied into the AVR buffer and pointed at by the resulting `UnsafeRawBufferPointer`.
+    /// copied into the AVR buffer and pointed at by the resulting ``UnsafeRawBufferPointer``.
     ///
     /// - Parameter start: The initial register to retrieve bytes from.
     /// - Parameter count: The number of contiguous registers to read from.
     /// - Returns: An `UnsafeRawBufferPointer` that points at the retrieved block of memory.
+    @inlinable
     func readBytes(from start: UInt8, count: UInt8) -> UnsafeRawBufferPointer {
         guard
             count > 0,
@@ -66,6 +85,7 @@ public extension I2CSlaveNode {
     ///
     /// - Parameter start: The starting register. The first byte of the pointer data will be written here.
     /// - Parameter value: The buffer of bytes to write.
+    @inlinable
     func writeBytes(to start: UInt8, value: UnsafeRawBufferPointer) {
         for (i, v) in value.enumerated() {
             blockingWriteSingleI2CRegister(slaveAddress: address.addressValue, register: start + UInt8(i), value: v)
@@ -76,6 +96,7 @@ public extension I2CSlaveNode {
     ///
     /// - Parameter register: The register number to read from.
     /// - Returns: The value as a `UInt8` byte.
+    @inlinable
     func read<T: I2CRegisterData>(from register: UInt8) -> T {
         let value = blockingReadSingleI2CRegister(slaveAddress: address.addressValue, register: register)
         return T(registerValue: value)
@@ -87,6 +108,7 @@ public extension I2CSlaveNode {
     /// - Parameter type: The `Type` being read. Will attempt to infer this automatically, but in some contexts it must be provided explicitly.
     /// - Returns: An instance of the type `T`, initialized from the required number of bytes for the type.
     /// - Throws: Precondition failure if the range of registers does not match the size of the type being returned.
+    @inlinable
     func read<T>(from registers: ClosedRange<UInt8>, as type: T.Type = T.self) -> T {
         let registersCount = registers.upperBound - registers.lowerBound
         let count = UInt8(MemoryLayout<T>.stride)
@@ -96,6 +118,11 @@ public extension I2CSlaveNode {
         return rawBuffPointer.load(as: type)
     }
 
+    /// Writes the provided `value` to the specified `register`.
+    ///
+    /// - Parameter register: The register to write into.
+    /// - Parameter value: The
+    @inlinable
     func write(to register: UInt8, value: I2CRegisterData) {
         blockingWriteSingleI2CRegister(slaveAddress: address.addressValue, register: register, value: value.registerValue)
     }
@@ -106,6 +133,7 @@ public extension I2CSlaveNode {
     ///
     /// - Parameter register: The register to write into.
     /// - Parameter value: The value to write.
+    @inlinable
     func write<T>(to registers: ClosedRange<UInt8>, value: T) {
         let registersCount = registers.count
         let count = MemoryLayout<T>.stride
@@ -136,28 +164,12 @@ public protocol I2CMutableRegisterData: I2CRegisterData {
     var registerValue: UInt8 { get set }
 }
 
-/// Creates an 8-bit bitmask within the specified range. The range must be between 0 and 7.
-///
-/// - Parameter range: The range of bits to include in the mask. (eg. `0...3`)
-/// - Returns: The bitmasked `UInt8`.
-private func bitmask(from range: ClosedRange<UInt8>) -> UInt8 {
-    precondition(range.lowerBound < 8 && range.upperBound < 8)
-
-    var mask: UInt8 = 0
-
-    for _ in range {
-        mask = mask << 1 | 1
-    }
-    mask = mask << range.lowerBound
-
-    return mask
-}
-
 public extension I2CRegisterData {
     /// Checks if the `registerValue` has a value of `1` at the specified `index`.
     ///
     /// - Parameter index: The bit number between `0` and `7` to check.
     /// - Returns: `true` if the bit at the specified index is set to `1`.
+    @inlinable
     func hasBit(at index: UInt8) -> Bool {
         precondition(index < 8)
         return registerValue & (1 << index) != 0
@@ -167,6 +179,7 @@ public extension I2CRegisterData {
     ///
     /// - Parameter index: The index to retrieve from, between `0` and `7`.
     /// - Returns: The `1` or `0` value for the specified bit.
+    @inlinable
     func getBit(at index: UInt8) -> UInt8 {
         precondition(index < 8)
         return (registerValue >> index) & 0b1
@@ -187,6 +200,7 @@ public extension I2CRegisterData {
     /// - Parameter index: The index to retrive from, between `0` and `7`.
     /// - Parameter defaultValue: The `RawRepresentable` value to use if none is found matching the bit value.
     /// - Returns: The `RawRepresentable` instance.
+    @inlinable
     func getBit<T: RawRepresentable>(at index: UInt8, defaultValue: T? = nil) -> T where T.RawValue == UInt8 {
         precondition(index < 8)
 
@@ -201,6 +215,7 @@ public extension I2CRegisterData {
     ///
     /// - Parameter range: The `a...b` range (inclusive) to read bits from.
     /// - Returns: The bits, shifted to the right.
+    @inlinable
     func getBits(from range: ClosedRange<UInt8>) -> UInt8 {
         precondition(range.lowerBound < 8)
         precondition(range.upperBound < 8)
@@ -232,6 +247,7 @@ public extension I2CRegisterData {
     /// - Parameter defaultValue: The `RawRepresentable` value to use if none is found matching the bit value.
     /// - Returns: The `RawRepresentable` instance.
     /// - Throws: Fatal error if the range is outside `0` and `7`, or no matching value was found and no default provided.
+    @inlinable
     func getBits<T: RawRepresentable>(from range: ClosedRange<UInt8>, defaultValue: T? = nil) -> T where T.RawValue == UInt8 {
         // return the value, or the default, or if all else fails, force the value
         guard let value = T(rawValue: getBits(from: range)) ?? defaultValue else {
@@ -247,6 +263,7 @@ public extension I2CMutableRegisterData {
     ///
     /// - Parameter index: The index to set, between `0` and `7`.
     /// - Parameter value: The value.
+    @inlinable
     mutating func setBit(at index: UInt8, to value: Bool) {
         // index is between 0 and 7
         precondition(index < 8)
@@ -259,6 +276,7 @@ public extension I2CMutableRegisterData {
     /// - Parameter index: The index to set, between `0` and `7`.
     /// - Parameter value: The value.
     /// - Throws a fatal error if the index is out of range, or the value is greater than `1`.
+    @inlinable
     mutating func setBit(at index: UInt8, to value: UInt8) {
         precondition(index < 8)
         precondition(value <= 1)
@@ -271,6 +289,7 @@ public extension I2CMutableRegisterData {
     /// - Parameter index: The index to set, between `0` and `7`.
     /// - Parameter value: The value.
     /// - Throws a fatal error if the index is out of range, or the `rawValue` is greater than `1`.
+    @inlinable
     mutating func setBit<T: RawRepresentable>(at index: UInt8, to value: T) where T.RawValue == UInt8 {
         setBit(at: index, to: value.rawValue)
     }
@@ -280,6 +299,7 @@ public extension I2CMutableRegisterData {
     ///
     /// - Parameter range: The `a...b` range (inclusive) to read bits from.
     /// - Parameter value: The `UInt8` value to read bits from.
+    @inlinable
     mutating func setBits(from range: ClosedRange<UInt8>, to value: UInt8) {
         // all values are between 0 and 7
         precondition(range.lowerBound < 8)
@@ -295,6 +315,7 @@ public extension I2CMutableRegisterData {
     ///
     /// - Parameter range: The `a...b` range (inclusive) to read bits from.
     /// - Parameter value: The `RawRepresentable` value to read bits from.
+    @inlinable
     mutating func setBits<T: RawRepresentable>(from range: ClosedRange<UInt8>, to value: T) where T.RawValue == UInt8 {
         setBits(from: range, to: value.rawValue)
     }
