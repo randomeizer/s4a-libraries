@@ -55,67 +55,101 @@ public protocol I2CSlaveNode {
 
 // Adds support methods for read/write to the slave node.
 public extension I2CSlaveNode {
-    /// Reads sequential bytes from the register range, returning access to them via an ``UnsafeRawBufferPointer``.
-    /// Not all I2C registers are necessarily contiguous, but if it's supported by the device, the block of bytes is
-    /// copied into the AVR buffer and pointed at by the resulting ``UnsafeRawBufferPointer``.
-    ///
-    /// - Parameter start: The initial register to retrieve bytes from.
-    /// - Parameter count: The number of contiguous registers to read from.
-    /// - Returns: An `UnsafeRawBufferPointer` that points at the retrieved block of memory.
-    @inlinable
-    func readBytes(from start: UInt8, count: UInt8) -> UnsafeRawBufferPointer {
-        guard
-            count > 0,
-            let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(count))
-        else {
-            return UnsafeRawBufferPointer(start: nil, count: 0)
-        }
 
-        let pointer = blockingReadMultipleI2CRegisters(
-            slaveAddress: address.addressValue,
-            registerStart: start,
-            registerCount: count,
-            buffer: buffer
-        )
-        return UnsafeRawBufferPointer(pointer)
+    /// Byte order when reading/writing multiple registers into a ``FixedWidthInteger``.
+    public enum ByteOrder {
+        case bigEndian
+        case littleEndian
     }
 
-    /// Writes sequential bytes from the `UnsafeRawBufferPointer` to the series of registers starting with `start`.
-    /// The total number of registers written to will be the `count` of the `UnsafeRawBufferPointer`.
-    ///
-    /// - Parameter start: The starting register. The first byte of the pointer data will be written here.
-    /// - Parameter value: The buffer of bytes to write.
-    @inlinable
-    func writeBytes(to start: UInt8, value: UnsafeRawBufferPointer) {
-        for (i, v) in value.enumerated() {
-            blockingWriteSingleI2CRegister(slaveAddress: address.addressValue, register: start + UInt8(i), value: v)
-        }
-    }
 
     /// Reads a single `UInt8` value from the specified register.
     ///
     /// - Parameter register: The register number to read from.
     /// - Returns: The value as a `UInt8` byte.
     @inlinable
-    func read<T: I2CRegisterData>(from register: UInt8) -> T {
+    func read<T>(from register: UInt8) -> T where T: I2CRegisterData {
         let value = blockingReadSingleI2CRegister(slaveAddress: address.addressValue, register: register)
         return T(registerValue: value)
+    }
+
+    /// Attempts to reads sequential bytes from the register range, passing them to the closure as an ``UnsafeRawBufferPointer``.
+    /// Not all I2C registers are necessarily contiguous, but if it's supported by the device, the block of bytes is
+    /// copied into the AVR buffer and pointed at by the resulting ``UnsafeRawBufferPointer``. The buffer is only valid
+    /// for the duration of the closure's execution.
+    ///
+    /// - Parameter registers: The range of registers to read from.
+    /// - Parameter handler: A closure receiving an `UnsafeRawBufferPointer` for the retrieved block of memory, or `nil` if unable to allocate it.
+    @inlinable
+    func readBytes<Result>(from registers: ClosedRange<UInt8>, into handler: (UnsafeRawBufferPointer?) throws -> Result) rethrows -> Result {
+        let count = registers.count
+
+        guard var buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(count)) else {
+            return try handler(nil)
+        }
+
+        buffer.initialize(repeating: 0, count: count)
+        defer {
+            buffer.deinitialize(count: count)
+            buffer.deallocate()
+        }
+
+        let pointer = blockingReadMultipleI2CRegisters(
+            slaveAddress: address.addressValue,
+            registerStart: registers.upperBound,
+            registerCount: count,
+            buffer: buffer
+        )
+
+        return try handler(UnsafeRawBufferPointer(pointer))
     }
 
     /// Reads the number of registers required to fill out the `T` type value.
     ///
     /// - Parameter registers: The range of register numbers to read from.
     /// - Parameter type: The `Type` being read. Will attempt to infer this automatically, but in some contexts it must be provided explicitly.
+    /// - Parameter byteOrder: The byte order to use when reading the registers. Defaults to ``ByteOrder/bigEndian``, which seems to be the most
+    ///   common ordering for I2C devices.
+    ///
     /// - Returns: An instance of the type `T`, initialized from the required number of bytes for the type.
     /// - Throws: Precondition failure if the range of registers does not match the size of the type being returned.
     @inlinable
-    func read<T>(from registers: ClosedRange<UInt8>, as type: T.Type = T.self) -> T {
-        let registersCount = registers.upperBound - registers.lowerBound
-        let count = UInt8(MemoryLayout<T>.stride)
-        precondition(registersCount == count)
+    func read<T>(from registers: ClosedRange<UInt8>, withByteOrder: ByteOrder = .bigEndian, as type: T.Type = T.self) -> T where T: FixedWidthInteger {
+        // If the read bits is less than the total bits in the storage type `T`, negative signed ints will incorrectly have leading `0` values. This fixes that.
+        //
+        // - Parameter fromBytes: The number of bytes that were read.
+        // - Parameter value: The actual value stored.
+        func prepInt<T>(fromBytes: UInt8, _ value: T) -> T where T: FixedWidthInteger {
+            let bits = Int(fromBytes * 8)
+            if T.isSigned && value.bitWidth > bits && value.leadingZeroBitCount == value.bitWidth - bits {
+                return value | T(-1) << bits
+            }
+            return value
+        }
 
-        let rawBuffPointer = readBytes(from: registers.lowerBound, count: count)
-        return rawBuffPointer.load(as: type)
+        let registersCount = registers.upperBound - registers.lowerBound
+        let typeWidth = UInt8(MemoryLayout<T>.stride)
+        precondition(registersCount == typeWidth)
+
+        var result = readBytes(from: registers) { buffer in
+            return buffer.load(as: type)
+        }
+
+        result = byteOrder == .bigEndian ? T(bigEndian: result) : T(littleEndian: result)
+
+        return prepInt(fromBytes: registers.count, result)
+    }
+
+    /// Writes sequential bytes from the `UnsafeRawBufferPointer` to the series of registers starting with `start`.
+    /// The total number of registers written to will be the `count` of the `UnsafeRawBufferPointer`.
+    ///
+    /// - Parameter registers: The range of registers to write to.
+    /// - Parameter value: The buffer of bytes to write.
+    @inlinable
+    func writeBytes(to registers: ClosedRange<UInt8>, from buffer: UnsafeRawBufferPointer, startAt start: UInt8 = 0) {
+        for (i, v) in value.enumerated() {
+            blockingWriteSingleI2CRegister(slaveAddress: address.addressValue, register: start + UInt8(i), value: v)
+        }
     }
 
     /// Writes the provided `value` to the specified `register`.
@@ -133,17 +167,22 @@ public extension I2CSlaveNode {
     ///
     /// - Parameter register: The register to write into.
     /// - Parameter value: The value to write.
+    /// - Parameter byteOrder: The byte order to use when writing the value. Defaults to ``ByteOrder/bigEndian``, which seems to be the most
+    ///
+    /// - Note: This will not work for types that are not contiguous in memory, such as `Array`s and other `class`es.
     @inlinable
-    func write<T>(to registers: ClosedRange<UInt8>, value: T) {
+    func write<T>(to registers: ClosedRange<UInt8>, value: T, byteOrder: ByteOrder = .bigEndian) where T: FixedWidthInteger {
         let registersCount = registers.count
         let count = MemoryLayout<T>.stride
-        precondition(registersCount == count)
+        precondition(registersCount <= count)
 
-        var value = value
-        let buff = UnsafeRawBufferPointer(start: &value, count: count)
-        for (i, v) in buff.enumerated() {
-            let register = registers.lowerBound + UInt8(i)
-            blockingWriteSingleI2CRegister(slaveAddress: address.addressValue, register: register, value: v)
+        var value = byteOrder == .bigEndian ? T(littleEndian: value) : T(bigEndian: value)
+        let valueRange = byteOrder == .bigEndian ? 0..<registersCount : count-registersCount..<count
+        withUnsafeBytes(of: &value) { buffer in
+            for (i, v) in buff.enumerated() {
+                let register = registers.lowerBound + UInt8(i)
+                blockingWriteSingleI2CRegister(slaveAddress: address.addressValue, register: register, value: v)
+            }
         }
     }
 }
@@ -348,12 +387,12 @@ extension Int8: I2CMutableRegisterData {
 
     /// Initialises the value based on a given register value.
     public init(registerValue: UInt8) {
-        self = Int8(registerValue)
+        self.registerValue = registerValue
     }
 
     /// The current register value.
     public var registerValue: UInt8 {
-        get { UInt8(self) }
-        set { self = Int8(newValue) }
+        get { UInt8(bitPattern: self) }
+        set { self = Int8(bitPattern: newValue) }
     }
 }
