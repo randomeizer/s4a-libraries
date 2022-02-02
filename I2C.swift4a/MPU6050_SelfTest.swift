@@ -42,11 +42,18 @@ extension MPU6050 {
         var zLow: UInt8 { getBits(from: 4...5) }
     }
 
-    fileprivate struct SelfTestResults {
+    fileprivate struct SelfTestResults: I2CRegisterBlock {
         private let selfTestX: SelfTestXYZ
         private let selfTestY: SelfTestXYZ
         private let selfTestZ: SelfTestXYZ
         private let selfTestA: SelfTestA
+
+        init() {
+            selfTestX = .init(registerValue: 0)
+            selfTestY = .init(registerValue: 0)
+            selfTestZ = .init(registerValue: 0)
+            selfTestA = .init(registerValue: 0)
+        }
 
         /// A five-bit unsigned integer.
         var accelX: UInt8 { selfTestX.accelHigh << 2 | selfTestA.xLow }
@@ -183,9 +190,16 @@ extension AccelConfig {
 
 extension MPU6050 {
     /// Struct used to send a gyro+accelerometer self test command in one operation.
-    fileprivate struct SelfTestConfig {
+    fileprivate struct SelfTestConfig: I2CRegisterBlock {
         var gyroConfig: GyroConfig
         var accelConfig: AccelConfig
+
+        public init() {
+            self.init(
+                gyro: (x: true, y: true, z: true),
+                accel: (x: true, y: true, z: true)
+            )
+        }
 
         public init(
             gyro: (x: Bool, y: Bool, z: Bool) = (x: true, y: true, z: true),

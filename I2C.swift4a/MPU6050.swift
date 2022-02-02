@@ -604,7 +604,11 @@ public struct SensorOut {
 extension MPU6050 {
     /// The most recent X, Y and Z accelerometer measurements.
     public var accelOut: AccelOut {
-        get { read(from: 0x3B...0x40) }
+        .init(
+            x: read(from: 0x3B...0x3C),
+            y: read(from: 0x3D...0x3E),
+            z: read(from: 0x3F...0x40)
+        )
     }
 
     /// These registers store the most recent temperature sensor measurement.
@@ -640,12 +644,20 @@ extension MPU6050 {
 
     /// The most recent X, Y, and Z gyro measurements.
     public var gyroOut: GyroOut {
-        get { read(from: 0x43...0x48) }
+        .init(
+            x: read(from: 0x43...0x44),
+            y: read(from: 0x45...0x46),
+            z: read(from: 0x47...0x48)
+        )
     }
 
     /// The combined sensor data for the accelerometer, gyro, and temperature.
     public var sensorOut: SensorOut {
-        get { read(from: 0x3B...0x48) }
+        .init(
+            accel: self.accelOut,
+            temp: self.tempOut,
+            gyro: self.gyroOut
+        )
     }
 }
 
@@ -667,8 +679,14 @@ extension MPU6050 {
     }
 
     public var powerManagement: PowerManagement {
-        get { read(from: 0x6B...0x6C) }
-        set { write(to: 0x6B...0x6C, value: newValue) }
+        get { .init(
+            register1: read(from: 0x6B),
+            register2: read(from: 0x6C)
+        )}
+        set {
+            write(to: 0x6B, value: newValue.register1)
+            write(to: 0x6C, value: newValue.register2)
+        }
     }
 }
 

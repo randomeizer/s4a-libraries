@@ -206,7 +206,7 @@ public extension MPU6050 {
     }
 
     /// Configures Slave 0-3 connections.
-    struct Slave {
+    struct Slave: I2CRegisterBlock {
 
         /// Contains read/write bit and the slave's 7-bit address.
         private var address: UInt8
@@ -216,6 +216,12 @@ public extension MPU6050 {
 
         /// Contains bits for configuring the slave.
         private var control: UInt8
+
+        public init() {
+            address = 0
+            slaveRegister = 0
+            control = 0
+        }
 
         /// If `true` the slave is reading, if `false` it is writing.
         /// I2C slave data transactions between the MPU-60X0 and Slave 0 are set as either
@@ -319,7 +325,7 @@ public extension MPU6050 {
     ///
     /// Slave 4 transactions are performed after Slave 0, 1, 2 and 3 transactions have been completed. Thus the maximum rate
     /// for Slave 4 transactions is determined by the Sample Rate as defined in Register 25.
-    struct Slave4 {
+    struct Slave4: I2CRegisterBlock {
 
         // Contains the read/write bit and the 7-bit slave address.
         private var address: UInt8
@@ -340,6 +346,13 @@ public extension MPU6050 {
         /// This field is populated after a read transaction.
         public var dataInput: UInt8
 
+        public init() {
+            address = 0
+            slaveRegister = 0
+            dataOutput = 0
+            control = 0
+            dataInput = 0
+        }
 
         /// If `true` the slave is reading, if `false` it is writing.
         /// I2C slave data transactions between the MPU-60X0 and Slave 0 are set as either
