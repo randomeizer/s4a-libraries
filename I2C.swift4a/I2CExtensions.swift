@@ -85,23 +85,24 @@ public extension I2CSlaveNode {
     /// - Parameter registers: The range of registers to read from.
     /// - Parameter handler: A closure receiving an `UnsafeRawBufferPointer` for the retrieved block of memory, or `nil` if unable to allocate it.
     @inlinable
-    func readBytes<Result>(from registers: ClosedRange<UInt8>, into handler: (UnsafeRawBufferPointer?) throws -> Result) rethrows -> Result {
-        let count = registers.count
+    func read<T>(from registers: ClosedRange<UInt8>, into handler: (UnsafeRawBufferPointer?) throws -> T) rethrows -> T {
+        let registersCount = registers.count
 
-        guard let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(count)) else {
+        // NOTE: I would prefer this was an `UnsafeMutableBufferPointer` with no associated type.
+        guard let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: registersCount) else {
             return try handler(nil)
         }
 
-        buffer.initialize(repeating: 0, count: count)
+        buffer.initialize(repeating: 0, count: registersCount)
         defer {
-            buffer.deinitialize(count: count)
+            buffer.deinitialize(count: registersCount)
             buffer.deallocate()
         }
 
         let pointer = blockingReadMultipleI2CRegisters(
             slaveAddress: address.addressValue,
-            registerStart: registers.upperBound,
-            registerCount: UInt8(count),
+            registerStart: registers.lowerBound,
+            registerCount: UInt8(registersCount),
             buffer: buffer
         )
 
@@ -125,10 +126,18 @@ public extension I2CSlaveNode {
 
         var result = T()
         withUnsafeMutableBytes(of: &result) { buffer in
-            var count: Int = 0
+            // NOTE: I would prefer to be able to do this:
+            // let pointer = blockingReadMultipleI2CRegisters(
+            //     slaveAddress: address.addressValue,
+            //     registerStart: register.lowerBound,
+            //     registerCount: registersCount,
+            //     buffer: buffer
+            // )
+
+            var index: Int = 0
             for register in registers {
-                buffer[count] = read(from: register)
-                count = count + 1
+                buffer[index] = read(from: register)
+                index = index + 1
             }
         }
 
@@ -155,10 +164,18 @@ public extension I2CSlaveNode {
 
         var result = T()
         withUnsafeMutableBytes(of: &result) { buffer in
-            var count: Int = 0
+            // NOTE: I would prefer to be able to do this:
+            // let pointer = blockingReadMultipleI2CRegisters(
+            //     slaveAddress: address.addressValue,
+            //     registerStart: register.lowerBound,
+            //     registerCount: registersCount,
+            //     buffer: buffer
+            // )
+
+            var index: Int = 0
             for register in registers {
-                buffer[count] = read(from: register)
-                count = count + 1
+                buffer[index] = read(from: register)
+                index = index + 1
             }
         }
 
@@ -172,7 +189,7 @@ public extension I2CSlaveNode {
     /// - Parameter buffer: The buffer containing the bytes to write. Note: the caller is responsible for deallocation.
     /// - Parameter start: The index within the `buffer` to start reading from.
     @inlinable
-    func writeBytes(to registers: ClosedRange<UInt8>, from buffer: UnsafeRawBufferPointer, startAt start: Int = 0) {
+    func write(to registers: ClosedRange<UInt8>, from buffer: UnsafeRawBufferPointer, startAt start: Int = 0) {
         let bufferCount = buffer.count
         precondition(Int(registers.count) <= bufferCount - start)
         var index = start
