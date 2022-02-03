@@ -38,10 +38,10 @@ extension MPU6050 {
 /// For further information regarding `extraSensorData` registers, please refer to Registers 73 to 96.
 ///
 /// The I2C_MST_P_NSR bit configures the I2 C Master’s transition from one slave read to the next slave read. If the bit equals 0, there will be a restart between reads. If the bit equals 1, there will be a stop followed by a start of the following read. When a write transaction follows a read transaction, the stop followed by a start of the successive write will be always used.
-public struct I2CMasterControl: I2CMutableRegisterData {
-    
+public struct I2CMasterControl: I2CMutableRegisterValue {
+
     public static let address: UInt8 = 0x24
-    
+
     public var registerValue: UInt8
 
     public init(registerValue: UInt8) {
@@ -209,8 +209,8 @@ public extension MPU6050 {
     }
 
     /// Configures Slave 0-3 connections.
-    struct Slave: I2CRegisterBlock {
-        
+    struct Slave: I2CMutableRegisterBlock {
+
         static let address0: ClosedRange<UInt8> = 0x25...0x27
         static let address1: ClosedRange<UInt8> = 0x28...0x2A
         static let address2: ClosedRange<UInt8> = 0x2B...0x2D
@@ -224,12 +224,6 @@ public extension MPU6050 {
 
         /// Contains bits for configuring the slave.
         private var control: UInt8
-
-        public init() {
-            address = 0
-            slaveRegister = 0
-            control = 0
-        }
 
         /// If `true` the slave is reading, if `false` it is writing.
         /// I2C slave data transactions between the MPU-60X0 and Slave 0 are set as either
@@ -333,8 +327,8 @@ public extension MPU6050 {
     ///
     /// Slave 4 transactions are performed after Slave 0, 1, 2 and 3 transactions have been completed. Thus the maximum rate
     /// for Slave 4 transactions is determined by the Sample Rate as defined in Register 25.
-    struct Slave4: I2CRegisterBlock {
-        
+    struct Slave4: I2CMutableRegisterBlock {
+
         public static let address: ClosedRange<UInt8> = 0x31...0x35
 
         // Contains the read/write bit and the 7-bit slave address.
@@ -355,14 +349,6 @@ public extension MPU6050 {
         ///
         /// This field is populated after a read transaction.
         public var dataInput: UInt8
-
-        public init() {
-            address = 0
-            slaveRegister = 0
-            dataOutput = 0
-            control = 0
-            dataInput = 0
-        }
 
         /// If `true` the slave is reading, if `false` it is writing.
         /// I2C slave data transactions between the MPU-60X0 and Slave 0 are set as either
@@ -426,7 +412,7 @@ public extension MPU6050 {
         set { write(to: 0x37, value: newValue)}
     }
 
-    struct MasterStatus: I2CMutableRegisterData {
+    struct MasterStatus: I2CMutableRegisterValue {
         public var registerValue: UInt8 = 0
 
         public init(registerValue: UInt8) {
@@ -589,7 +575,7 @@ extension MPU6050 {
     /// For further information regarding the Sample Rate, please refer to register 25.
     ///
     /// Bits 6 and 5 are reserved.
-    public struct I2CMasterDelayControl: I2CMutableRegisterData {
+    public struct I2CMasterDelayControl: I2CMutableRegisterValue {
         public var registerValue: UInt8
 
         public init(registerValue: UInt8) {

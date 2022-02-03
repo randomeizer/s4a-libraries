@@ -5,6 +5,9 @@
 // on an MPL3115A2 sensor via the I2C bus.
 // Based on Carl Peto's MPL3115A2 example library and the MPL3115A2 Data Sheet
 
+// WARNING: Incomplete implementation!!! There are many registers unmapped, and basic functions
+// that do not convert data correctly yet.
+
 import AVR
 
 fileprivate func waitUntil(_ done: () -> Bool, delaying ms: () -> UInt16 = { 10 }) {
@@ -144,7 +147,7 @@ extension MPL3115A2 {
         get { read(from: 0x04...0x05) }
     }
 
-    public struct DataReadyStatus: I2CMutableRegisterData {
+    public struct DataReadyStatus: I2CMutableRegisterValue {
 
         public static let address: UInt8 = 0x06
 
@@ -230,7 +233,7 @@ extension MPL3115A2 {
         get { read(from: SensorData.address) }
         set { write(to: SensorData.address, value: newValue) }
     }
-    public struct SensorData: I2CMutableRegisterData {
+    public struct SensorData: I2CMutableRegisterValue {
 
         public static let address: UInt8 = 0x13
 
@@ -321,7 +324,7 @@ extension MPL3115A2 {
         set { write(to: InterruptConfig.address, value: newValue) }
     }
 
-    public struct Control1: I2CMutableRegisterData {
+    public struct Control1: I2CMutableRegisterValue {
 
         public static let address: UInt8 = 0x26
 
@@ -403,7 +406,7 @@ extension MPL3115A2 {
         case source = 0x01
     }
 
-    public struct Control2: I2CMutableRegisterData {
+    public struct Control2: I2CMutableRegisterValue {
 
         public static let address: UInt8 = 0x27
 
@@ -453,7 +456,7 @@ extension MPL3115A2 {
         case openDrain = 1
     }
 
-    public struct Interrupt: I2CMutableRegisterData {
+    public struct Interrupt: I2CMutableRegisterValue {
 
         public static let address: UInt8 = 0x28
 
@@ -504,7 +507,7 @@ extension MPL3115A2 {
         }
     }
 
-    public struct InterruptEnable: I2CMutableRegisterData {
+    public struct InterruptEnable: I2CMutableRegisterValue {
 
         public static let address: UInt8 = 0x29
 
@@ -568,7 +571,7 @@ extension MPL3115A2 {
         case int1 = 1
     }
 
-    public struct InterruptConfig: I2CMutableRegisterData {
+    public struct InterruptConfig: I2CMutableRegisterValue {
 
         public static let address: UInt8 = 0x2A
 

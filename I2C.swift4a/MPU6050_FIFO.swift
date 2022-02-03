@@ -40,8 +40,8 @@ extension MPU6050 {
     }
 }
 
-public struct FifoEnable: I2CMutableRegisterData {
-    
+public struct FifoEnable: I2CMutableRegisterValue {
+
     public static let address: UInt8 = 0x23
 
     /// The register value.

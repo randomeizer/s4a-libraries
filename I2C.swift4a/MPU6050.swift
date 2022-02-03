@@ -106,7 +106,7 @@ extension MPU6050 {
     }
 
     /// Describes the `CONFIG` register (`0x1A`) contents.
-    public struct Config: I2CMutableRegisterData {
+    public struct Config: I2CMutableRegisterValue {
         /// The register address
         public static let address: UInt8 = 0x1A
 
@@ -244,7 +244,7 @@ extension MPU6050 {
     }
 }
 
-public struct GyroConfig: I2CMutableRegisterData {
+public struct GyroConfig: I2CMutableRegisterValue {
 
     public static let address: UInt8 = 0x1B
 
@@ -292,7 +292,7 @@ public struct GyroConfig: I2CMutableRegisterData {
     }
 }
 
-public struct AccelConfig: I2CMutableRegisterData {
+public struct AccelConfig: I2CMutableRegisterValue {
 
     public static let address: UInt8 = 0x1C
 
@@ -375,7 +375,7 @@ extension MPU6050 {
 /// For further information regarding Bypass Mode, please refer to
 /// Section 7.11 and 7.13 of the MPU6000/MPU-6050 Product Specification
 /// document.
-public struct InterruptConfig: I2CMutableRegisterData {
+public struct InterruptConfig: I2CMutableRegisterValue {
     public static let address: UInt8 = 0x37
 
     public var registerValue: UInt8
@@ -465,7 +465,7 @@ public struct InterruptConfig: I2CMutableRegisterData {
 /// generation can be found in Register 54.
 ///
 /// Bits 2 and 1 are reserved.
-public struct InterruptEnable: I2CMutableRegisterData {
+public struct InterruptEnable: I2CMutableRegisterValue {
     public static let address: UInt8 = 0x38
 
     public var registerValue: UInt8
@@ -496,7 +496,7 @@ public struct InterruptEnable: I2CMutableRegisterData {
 /// For a list of I2C Master interrupts, please refer to Register 54.
 ///
 /// Bits 2 and 1 are reserved.
-public struct InterruptStatus: I2CRegisterData {
+public struct InterruptStatus: I2CRegisterValue {
 
     public static let address: UInt8 = 0x3A
 
@@ -708,7 +708,7 @@ extension MPU6050 {
 /// Note: This register does not clear the sensor registers. The reset initializes the serial interface as well.
 ///
 /// Bits 7 to 3 are reserved.
-public struct SignalPathReset: I2CMutableRegisterData {
+public struct SignalPathReset: I2CMutableRegisterValue {
     public static let address: UInt8 = 0x68
 
     public var registerValue: UInt8
@@ -747,7 +747,7 @@ public struct SignalPathReset: I2CMutableRegisterData {
 /// This is a precondition to enabling Bypass Mode. For further information regarding Bypass Mode, please refer to Register 55.
 ///
 /// Bits 7 and 3 are reserved.
-public struct UserControl: I2CMutableRegisterData {
+public struct UserControl: I2CMutableRegisterValue {
     public static let address: UInt8 = 0x6A
 
     public var registerValue: UInt8
@@ -845,10 +845,10 @@ public struct PowerManagement: I2CMutableRegisterBlock {
 
     public var register1: UInt8
     public var register2: UInt8
-    
-    public init() {
-        register1 = 0
-        register2 = 0
+
+    public init(register1: UInt8 = 0, register2: UInt8 = 0) {
+        self.register1 = register1
+        self.register2 = register2
     }
 
     /// When set to `true`, this resets all internal registers to their default values.
@@ -1012,7 +1012,7 @@ extension MPU6050 {
 /// The default value of the register is `0x68`.
 ///
 /// Bits 0 and 7 are reserved. (Hard coded to 0)
-public struct WhoAmI: I2CRegisterData {
+public struct WhoAmI: I2CRegisterValue {
     public let registerValue: UInt8
 
     public init(registerValue: UInt8) {

@@ -15,7 +15,7 @@ private func pow(_ a: Float, _ ex: Float) -> Float {
 extension MPU6050 {
 
     /// Provides read-only access to a `SELF_TEST_X|Y|Z` value.
-    fileprivate struct SelfTestXYZ: I2CRegisterData {
+    fileprivate struct SelfTestXYZ: I2CRegisterValue {
         let registerValue: UInt8
 
         init(registerValue: UInt8) {
@@ -30,7 +30,7 @@ extension MPU6050 {
     }
 
     /// Provides read-only access to the `SELF_TEST_A` value, which provides the bottom 2 bits for `X|Y|ZA_TEST`
-    fileprivate struct SelfTestA: I2CRegisterData {
+    fileprivate struct SelfTestA: I2CRegisterValue {
         public let registerValue: UInt8
 
         public init(registerValue: UInt8) {
@@ -190,16 +190,9 @@ extension AccelConfig {
 
 extension MPU6050 {
     /// Struct used to send a gyro+accelerometer self test command in one operation.
-    fileprivate struct SelfTestConfig: I2CRegisterBlock {
+    fileprivate struct SelfTestConfig: I2CMutableRegisterBlock {
         var gyroConfig: GyroConfig
         var accelConfig: AccelConfig
-
-        public init() {
-            self.init(
-                gyro: (x: true, y: true, z: true),
-                accel: (x: true, y: true, z: true)
-            )
-        }
 
         public init(
             gyro: (x: Bool, y: Bool, z: Bool) = (x: true, y: true, z: true),
