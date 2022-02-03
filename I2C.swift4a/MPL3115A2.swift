@@ -46,17 +46,88 @@ extension MPL3115A2 {
         sensorData.enableAllFlags()
     }
 
-    /// Get the current altitude from a running sensor.
-    public mutating func currentAltitude() -> Float {
-        // start the altimeter, turn on the analog systems, ADC, and set oversampling rate to 128x, read as altitude
-        control1 = .init(mode: .altimeter, oversampleRatio: .x128, active: true)
+    /// Sets up the sensor for continuous altitude readings by polling.
+    ///
+    /// - Parameter handler: A closure that is called when a new altitude reading is available.
+    ///                      Returns `true` to continue polling, `false` to stop.
+    ///
+    /// - Note: The value is a 20-bit signed integer with a fractional part,
+    ///         as a Q16.4 fixed-point format.
+    public mutating func altitudeViaPolling(to handler: (Int32) -> Bool) {
+        control(
+            mode: .altimeter,
+            oversampleRatio: .x128
+        )
+        sensorData(
+            dataReadyEventMode: .enabled,
+            pressureAltitudeFlag: .enabled,
+            temperatureFlag: .enabled
+        )
+        control.active = true
 
-        // wait for the altimeter to be ready
-        waitUntil { dataReadyStatus.pressureTemperatureDataReady }
+        var active = true
+        while active {
+            // wait for the altimeter to be ready
+            waitUntil { dataReadyStatus.pressureTemperatureDataReady }
 
-        let rawValue: UInt32 = read(from: 0x01...0x03)
-        let value = Int32(rawValue & 0x80000 > 0 ? rawValue | 0xFFF00000 : rawValue)
-        return Float(value>>4)/16.0
+            // read both the altitude and temperature, to clear the registers
+            let altitude = altitudeData
+            let _ = temperatureData
+
+            if let altitude = altitude {
+                active = handler(altitude)
+            }
+        }
+    }
+
+    /// Sets up the sensor for coninuous altitude readings by checking interrupts.
+    ///
+    /// - Parameter handler: A closure that is called when a new altitude reading is available.
+    ///                      Returns `true` to continue polling, `false` to stop.
+    ///
+    /// - Note: The value is a 20-bit signed integer with a fractional part,
+    ///         as a Q16.4 fixed-point format.
+    public mutating func altitudeViaInterrupt(to handler: (Int32) -> Bool, checkInterrupt: () -> Bool, clearInterrupt: () -> Void) {
+        control(
+            mode: .altimeter,
+            oversampleRatio: .x128
+        )
+
+        sensorData(
+            dataReadyEventMode: .enabled,
+            pressureAltitudeFlag: .enabled,
+            temperatureFlag: .enabled
+        )
+
+        interrupt(
+            int2Polarity: .activeHigh,
+            int2Mode: .openDrain
+        )
+
+        interruptEnable(
+            dataReady: .enabled
+        )
+
+        control.active = true
+
+        var active = true
+        while active {
+            // Check for Interrupt on pin 2
+            waitUntil { checkInterrupt() }
+
+            guard systemInterruptStatus.dataReady else {
+                clearInterrupt()
+                continue
+            }
+
+            // read both the altitude and temperature, to clear the registers
+            let altitude = altitudeData
+            let _ = temperatureData
+
+            if let altitude = altitude {
+                active = handler(altitude)
+            }
+        }
     }
 
     /// Get the current pressure from a running sensor.
@@ -109,47 +180,43 @@ extension MPL3115A2 {
     /// real-time updates to the OUT_P and OUT_T registers. The same STATUS register can be read through an
     /// alternate address 00h (F_Mode = 00).
     public var dataReadyStatus: DataReadyStatus {
-        get { read(from: DataReadyStatus.address) }
+        get { read(from: 0x06) }
     }
 
     /// The pressure data is stored as a 20-bit unsigned integer with a fractional part. The OUT_P_MSB (01h),
     /// OUT_P_CSB (02h) and bits 7 to 6 of the OUT_P_LSB (03h) registers contain the integer part in Pascals.
     /// Bits 5 to 4 of OUT_P_LSB contain the fractional component. This value is representative as a
     /// Q18.2 fixed point format where there are 18 integer bits and two fractional bits.
-    public var pressureData: Float? {
-        get {
-            guard control1.mode == .barometer else {
-                return nil
-            }
-            let value: Int32 = read(from: 0x01...0x03) >> 4
-            // let frac: UInt8 = value & 0x03
-            // let int: Int32 = value >> 2
-            return Float(value)/4.0
+    public var pressureData: UInt32? {
+        guard control.mode == .barometer else {
+            return nil
         }
+        return read(from: 0x01...0x03) >> 4
+        // #warning("probably incorrect")
+        // let frac: UInt8 = value & 0x03
+        // let int: Int32 = value >> 2
+        // return Float(value)/4.0
     }
 
     /// The altitude data is stored as a 20-bit signed integer with a fractional part. The OUT_P_MSB (01h) and
     /// OUT_P_CSB (02h) registers contain the integer part in meters and the OUT_P_LSB (03h) register contains
     /// the fractional part. This value is represented as a Q16.4 fixed-point format where there are 16 integer
     /// bits (including the signed bit) and four fractional bits.
-    public var altitudeData: Float? {
-        get {
-            guard control1.mode == .altimeter else {
-                return nil
-            }
-            let rawValue: UInt32 = read(from: 0x01...0x03)
-            let value = UInt32(rawValue & 0x80000 > 0 ? rawValue | 0xFFF00000 : rawValue)
-            return Float(value>>4)/16.0
+    public var altitudeData: Int32? {
+        guard control.mode == .altimeter else {
+            return nil
         }
+        return read(from: 0x01...0x03) >> 4
+        // #warning("probably incorrect")
+        // let value = UInt32(rawValue & 0x80000 > 0 ? rawValue | 0xFFF00000 : rawValue)
+        // return Float(value>>4)/16.0
     }
 
     public var temperatureData: UInt16 {
-        get { read(from: 0x04...0x05) }
+        read(from: 0x04...0x05)
     }
 
     public struct DataReadyStatus: I2CMutableRegisterValue {
-
-        public static let address: UInt8 = 0x06
 
         public var registerValue: UInt8
 
@@ -228,14 +295,95 @@ extension MPL3115A2 {
 }
 
 extension MPL3115A2 {
+    public var systemInterruptStatus: SystemInterruptStatus {
+        read(from: 0x12)
+    }
+
+    public struct SystemInterruptStatus: I2CRegisterValue {
+        public var registerValue: UInt8
+
+        public init(registerValue: UInt8) {
+            self.registerValue = registerValue
+        }
+
+        /// `SRC_DRDY`: Data ready interrupt status bit. Logic '1' indicates that pressure/altitude or temperature
+        /// data ready interrupt is active indicating the presence of new data and/or a data overwrite,
+        /// otherwise it is a logic '0'.
+        ///
+        /// This bit is asserted when the PTOW and/or PTDR is set and the functional block interrupt has
+        /// been enabled. This bit is cleared by reading the STATUS and pressure/temperature register.
+        public var dataReady: Bool { hasBit(at: 7) }
+
+        /// `SRC_FIFO`: FIFO interrupt status bit. Logic '1' indicates that a FIFO interrupt event such as an
+        /// overflow event has occurred.
+        ///
+        /// FIFO interrupt event generators: FIFO overflow, or (watermark: F_CNT = F_WMRK).
+        /// * 0 — no FIFO interrupt event has occurred. (reset value) This bit is cleared by reading the F_STATUS register.
+        /// * 1 — A FIFO interrupt event such as an overflow event has occurred.
+        public var fifoEvent: Bool { hasBit(at: 6) }
+
+        /// `SRC_PW`: Pressure/altitude alerter status bit near or equal to target pressure/altitude (near is
+        /// within target value ± window value).
+        ///
+        /// * 0 — (reset value)
+        /// Window value needs to be non zero for interrupt to trigger.
+        public var pressureAltitudeAlert: Bool { hasBit(at: 5) }
+
+        /// `SRC_TW`: Temperature alerter status bit near or equal to target temperature (near is within
+        /// target value ± window value.)
+        ///
+        /// * 0 — (reset value)
+        /// Window value needs to be non zero for interrupt to trigger.
+        public var temperatureAlert: Bool { hasBit(at: 4) }
+
+        /// `SRC_PTH`: Pressure/altitude threshold interrupt.
+        ///
+        /// * 0 — If the window is set to 0, it will only trigger on crossing the center threshold. (reset value)
+        /// * 1 — With the window set to a non zero value, the trigger will occur on crossing any of the
+        ///   thresholds: upper, center or lower.
+        public var pressureAltitudeThreshold: Bool { hasBit(at: 3) }
+
+        /// `SRC_TTH`: Temperature threshold interrupt.
+        ///
+        /// * 0 — If the window is set to 0, it will only trigger on crossing the center threshold. (reset value)
+        /// * 1 — With the window set to a non zero value, the trigger will occur on crossing any of the
+        ///   thresholds: upper, center or lower.
+        public var temperatureThreshold: Bool { hasBit(at: 2) }
+
+        /// `SRC_PCHG`: Delta P interrupt status bit.
+        ///
+        /// * 0 — (reset value)
+        public var pressureChange: Bool { hasBit(at: 1) }
+
+        /// `SRC_TCHG`: Delta T interrupt status bit.
+        ///
+        /// * 0 — (reset value)
+        public var temperatureChange: Bool { hasBit(at: 0) }
+    }
+}
+
+extension MPL3115A2 {
 
     public var sensorData: SensorData {
-        get { read(from: SensorData.address) }
-        set { write(to: SensorData.address, value: newValue) }
+        get { read(from: 0x13) }
+        set { write(to: 0x13, value: newValue) }
     }
-    public struct SensorData: I2CMutableRegisterValue {
 
-        public static let address: UInt8 = 0x13
+    public mutating func sensorData(
+        dataReadyEventMode: Enabled = .disabled,
+        pressureAltitudeFlag: Enabled = .disabled,
+        temperatureFlag: Enabled = .disabled
+    ) {
+        var sensorData = SensorData(registerValue: 0)
+
+        sensorData.dataReadyEventMode = dataReadyEventMode
+        sensorData.pressureAltitudeFlag = pressureAltitudeFlag
+        sensorData.temperatureFlag = temperatureFlag
+
+        self.sensorData = sensorData
+    }
+
+    public struct SensorData: I2CMutableRegisterValue {
 
         public var registerValue: UInt8
 
@@ -294,81 +442,144 @@ extension MPL3115A2 {
         case x128 = 0x07
     }
 
-    /// The `CTRL_REG1` register.
-    public var control1: Control1 {
-        get { read(from: Control1.address) }
-        set { write(to: Control1.address, value: newValue) }
+    /// The `CTRL_REG1` and `CTRL_REG2` registers.
+    public var control: Control {
+        get { read(from: 0x26...0x27) }
+        set { write(to: 0x26...0x27, value: newValue) }
     }
 
-    /// The `CTRL_REG2` register.
-    public var control2: Control2 {
-        get { read(from: Control2.address) }
-        set { write(to: Control2.address, value: newValue) }
+    public mutating func control(
+        mode: Mode = .barometer,
+        oversampleRatio: OversampleRatio = .x1,
+        softwareResetting: Bool = false,
+        oneShotTest: Bool = false,
+        active: Bool = false,
+        loadOutput: Bool = false,
+        alarmSelector: AlarmSelector = .target,
+        autoAcquisitionTimeStep: UInt8 = 0
+    ) {
+        var control = Control()
+
+        control.mode = mode
+        control.oversampleRatio = oversampleRatio
+        control.softwareResetting = softwareResetting
+        control.oneShotTest = oneShotTest
+        control.active = active
+        control.loadOutput = loadOutput
+        control.alarmSelector = alarmSelector
+        control.autoAcquisitionTimeStep = autoAcquisitionTimeStep
+
+        self.control = control
     }
 
     /// The `CTRL_REG3` register - interrupt control.
     public var interrupt: Interrupt {
-        get { read(from: Interrupt.address) }
-        set { write(to: Interrupt.address, value: newValue) }
+        get { read(from: 0x28) }
+        set { write(to: 0x28, value: newValue) }
+    }
+
+    public mutating func interrupt(
+        int1Polarity: InterruptPolarity = .activeLow,
+        int1Mode: InterruptMode = .internalPullup,
+        int2Polarity: InterruptPolarity = .activeLow,
+        int2Mode: InterruptMode = .internalPullup
+    ) {
+        var interrupt = Interrupt()
+
+        interrupt.int1Polarity = int1Polarity
+        interrupt.int1Mode = int1Mode
+        interrupt.int2Polarity = int2Polarity
+        interrupt.int2Mode = int2Mode
+
+        self.interrupt = interrupt
     }
 
     /// The `CTRL_REG4` register - interrupt enable control.
     public var interruptEnable: InterruptEnable {
-        get { read(from: InterruptEnable.address) }
-        set { write(to: InterruptEnable.address, value: newValue) }
+        get { read(from: 0x29) }
+        set { write(to: 0x29, value: newValue) }
+    }
+
+    public mutating func interruptEnable(
+        dataReady: Enabled = .disabled,
+        fifo: Enabled = .disabled,
+        pressureWindow: Enabled = .disabled,
+        temperatureWindow: Enabled = .disabled,
+        pressureThreshold: Enabled = .disabled,
+        temperatureThreshold: Enabled = .disabled,
+        pressureChange: Enabled = .disabled,
+        temperatureChange: Enabled = .disabled
+    ) {
+        var interruptEnable = InterruptEnable(registerValue: 0)
+
+        interruptEnable.dataReady = dataReady
+        interruptEnable.fifo = fifo
+        interruptEnable.pressureWindow = pressureWindow
+        interruptEnable.temperatureWindow = temperatureWindow
+        interruptEnable.pressureThreshold = pressureThreshold
+        interruptEnable.temperatureThreshold = temperatureThreshold
+        interruptEnable.pressureChange = pressureChange
+        interruptEnable.temperatureChange = temperatureChange
+
+        self.interruptEnable = interruptEnable
     }
 
     /// The `CTRL_REG5` register - interrupt configuration.
     public var interruptConfig: InterruptConfig {
-        get { read(from: InterruptConfig.address) }
-        set { write(to: InterruptConfig.address, value: newValue) }
+        get { read(from: 0x2A) }
+        set { write(to: 0x2A, value: newValue) }
     }
 
-    public struct Control1: I2CMutableRegisterValue {
+    public mutating func interruptConfig(
+        dataReady: InterruptSelector = .int2,
+        fifo: InterruptSelector = .int2,
+        pressureWindow: InterruptSelector = .int2,
+        temperatureWindow: InterruptSelector = .int2,
+        pressureThreshold: InterruptSelector = .int2,
+        temperatureThreshold: InterruptSelector = .int2,
+        pressureChange: InterruptSelector = .int2,
+        temperatureChange: InterruptSelector = .int2
+    ) {
+        var interruptConfig = InterruptConfig(registerValue: 0)
 
-        public static let address: UInt8 = 0x26
+        interruptConfig.dataReady = dataReady
+        interruptConfig.fifo = fifo
+        interruptConfig.pressureWindow = pressureWindow
+        interruptConfig.temperatureWindow = temperatureWindow
+        interruptConfig.pressureThreshold = pressureThreshold
+        interruptConfig.temperatureThreshold = temperatureThreshold
+        interruptConfig.pressureChange = pressureChange
+        interruptConfig.temperatureChange = temperatureChange
 
-        public var registerValue: UInt8
+        self.interruptConfig = interruptConfig
+    }
 
-        public init(registerValue: UInt8) {
-            self.registerValue = registerValue
+    public enum AlarmSelector: UInt8 {
+        case target = 0x00
+        case source = 0x01
+    }
+
+    /// Combines the `CTRL_REG1` and `CTRL_REG2` registers.
+    public struct Control: I2CMutableRegisterBlock {
+
+        public var register1: UInt8
+        public var register2: UInt8
+
+        public init(register1: UInt8 = 0, register2: UInt8 = 0) {
+            self.register1 = register1
+            self.register2 = register2
         }
 
-        public init(
-            mode: Mode = .barometer,
-            oversampleRatio: OversampleRatio = .x1,
-            softwareResetting: Bool = false,
-            oneShotTest: Bool = false,
-            active: Bool = false
-        ) {
-            self.registerValue = 0x00
-
-            self.mode = mode
-            self.oversampleRatio = oversampleRatio
-            self.softwareResetting = softwareResetting
-            self.oneShotTest = oneShotTest
-            self.active = active
+        /// Altimeter/barometer mode.
+        public var mode: Mode {
+            get { register1.getBit(at: 7) }
+            set { register1.setBit(at: 7, to: newValue) }
         }
 
-        /// This bit is sets the mode to ACTIVE, where the system will make measurements at periodic times based
-        /// on the value of ST bits.
-        public var active: Bool {
-            get { hasBit(at: 0) }
-            set { setBit(at: 0, to: newValue) }
-        }
-
-        /// OST bit will initiate a measurement immediately. If the SBYB bit is set to active,
-        /// setting the OST bit will initiate an immediate measurement, the part will then return
-        /// to acquiring data as per the setting of the ST bits in CTRL_REG2. In this mode, the OST
-        /// bit does not clear itself and must be cleared and set again to initiate another immediate measurement.
-        ///
-        /// In one-shot mode, when SBYB is 0, the OST bit is an auto-clear bit. When OST is set, the device initiates
-        /// a measurement by going into active mode. Once a pressure/altitude and temperature measurement is completed,
-        /// it clears the OST bit and comes back to STANDBY mode. User shall read the value of the OST bit before
-        /// writing to this bit again.
-        public var oneShotTest: Bool {
-            get { hasBit(at: 1) }
-            set { setBit(at: 1, to: newValue) }
+        /// These bits select the oversampling ratio. Value is 2`OS`. The default value is `000` for a ratio of `1`.
+        public var oversampleRatio: OversampleRatio {
+            get { register1.getBits(from: 3...5) }
+            set { register1.setBits(from: 3...5, to: newValue) }
         }
 
         /// Software reset. This bit is used to activate the software reset. The boot mechanism can be enabled in STANDBY
@@ -384,52 +595,29 @@ extension MPL3115A2 {
         ///
         /// At the end of the boot process the RST bit is de-asserted to 0. Reading this bit will return a value of zero.
         public var softwareResetting: Bool {
-            get { hasBit(at: 2) }
-            set { setBit(at: 2, to: newValue) }
+            get { register1.hasBit(at: 2) }
+            set { register1.setBit(at: 2, to: newValue) }
         }
 
-        /// These bits select the oversampling ratio. Value is 2`OS`. The default value is `000` for a ratio of `1`.
-        public var oversampleRatio: OversampleRatio {
-            get { getBits(from: 3...5) }
-            set { setBits(from: 3...5, to: newValue) }
-        }
-
-        /// Altimeter/barometer mode.
-        public var mode: Mode {
-            get { getBit(at: 7) }
-            set { setBit(at: 7, to: newValue) }
-        }
-    }
-
-    public enum AlarmSelector: UInt8 {
-        case target = 0x00
-        case source = 0x01
-    }
-
-    public struct Control2: I2CMutableRegisterValue {
-
-        public static let address: UInt8 = 0x27
-
-        public var registerValue: UInt8
-
-        public init(registerValue: UInt8) {
-            self.registerValue = registerValue
-        }
-
-        /// Auto acquisition time step.
-        /// Step value is 2ST — Giving a range of 1 second to 215 seconds (9 hours).
-        public var autoAcquisitionTimeStep: UInt8 {
-            get { getBits(from: 0...3) }
-            set { setBits(from: 0...3, to: newValue) }
-        }
-
-        /// The bit selects the target value for SRC_PW/SRC_TW and SRC_PTH/SRC_TTH.
+        /// OST bit will initiate a measurement immediately. If the SBYB bit is set to active,
+        /// setting the OST bit will initiate an immediate measurement, the part will then return
+        /// to acquiring data as per the setting of the ST bits in CTRL_REG2. In this mode, the OST
+        /// bit does not clear itself and must be cleared and set again to initiate another immediate measurement.
         ///
-        /// * 0 — (reset value) The values in P_TGT_MSB, P_TGT_LSB and T_TGT are used.
-        /// * 1 — The values in OUT_P/OUT_T are used for calculating the interrupts SRC_PW/SRC_TW and SRC_PTH/SRC_TTH.
-        public var alarmSelector: AlarmSelector {
-            get { getBit(at: 4) }
-            set { setBit(at: 4, to: newValue) }
+        /// In one-shot mode, when SBYB is 0, the OST bit is an auto-clear bit. When OST is set, the device initiates
+        /// a measurement by going into active mode. Once a pressure/altitude and temperature measurement is completed,
+        /// it clears the OST bit and comes back to STANDBY mode. User shall read the value of the OST bit before
+        /// writing to this bit again.
+        public var oneShotTest: Bool {
+            get { register1.hasBit(at: 1) }
+            set { register1.setBit(at: 1, to: newValue) }
+        }
+
+        /// This bit is sets the mode to ACTIVE, where the system will make measurements at periodic times based
+        /// on the value of ST bits.
+        public var active: Bool {
+            get { register1.hasBit(at: 0) }
+            set { register1.setBit(at: 0, to: newValue) }
         }
 
         /// This is to load the target values for `SRC_PW`/`SRC_TW` and `SRC_PTH`/`SRC_TTH`.
@@ -441,14 +629,30 @@ extension MPL3115A2 {
         /// * This bit must be set at least once if `alarmSelector` is set to `source`.
         /// * To reload the next `OUT_P`/`OUT_T` as the target values, clear and set again.
         public var loadOutput: Bool {
-            get { hasBit(at: 5) }
-            set { setBit(at: 5, to: newValue) }
+            get { register2.hasBit(at: 5) }
+            set { register2.setBit(at: 5, to: newValue) }
+        }
+
+        /// The bit selects the target value for SRC_PW/SRC_TW and SRC_PTH/SRC_TTH.
+        ///
+        /// * 0 — (reset value) The values in P_TGT_MSB, P_TGT_LSB and T_TGT are used.
+        /// * 1 — The values in OUT_P/OUT_T are used for calculating the interrupts SRC_PW/SRC_TW and SRC_PTH/SRC_TTH.
+        public var alarmSelector: AlarmSelector {
+            get { register2.getBit(at: 4) }
+            set { register2.setBit(at: 4, to: newValue) }
+        }
+
+        /// Auto acquisition time step.
+        /// Step value is 2ST — Giving a range of 1 second to 215 seconds (9 hours).
+        public var autoAcquisitionTimeStep: UInt8 {
+            get { register2.getBits(from: 0...3) }
+            set { register2.setBits(from: 0...3, to: newValue) }
         }
     }
 
-    public enum InterruptActive: UInt8 {
-        case low = 0
-        case high = 1
+    public enum InterruptPolarity: UInt8 {
+        case activeLow = 0
+        case activeHigh = 1
     }
 
     public enum InterruptMode: UInt8 {
@@ -458,12 +662,14 @@ extension MPL3115A2 {
 
     public struct Interrupt: I2CMutableRegisterValue {
 
-        public static let address: UInt8 = 0x28
-
         public var registerValue: UInt8
 
         public init(registerValue: UInt8) {
             self.registerValue = registerValue
+        }
+
+        public init() {
+            self.init(registerValue: 0)
         }
 
         /// The IPOL bit selects the polarity of the interrupt signal. When IPOL is '0' (default value)
@@ -472,9 +678,9 @@ extension MPL3115A2 {
         ///
         /// * 0 — Active low (reset value)
         /// * 1 — Active high
-        public var interrupt1Active: InterruptActive {
-            get { getBit(at: 0) }
-            set { setBit(at: 0, to: newValue) }
+        public var int1Polarity: InterruptPolarity {
+            get { getBit(at: 5) }
+            set { setBit(at: 5, to: newValue) }
         }
 
         /// This bit configures the interrupt pin to push-pull or in open drain mode. The default value is
@@ -484,16 +690,16 @@ extension MPL3115A2 {
         ///
         /// * 0 — Internal pullup (reset value)
         /// * 1 — Open drain
-        public var interrupt1Mode: InterruptMode {
-            get { getBit(at: 1) }
-            set { setBit(at: 1, to: newValue) }
+        public var int1Mode: InterruptMode {
+            get { getBit(at: 4) }
+            set { setBit(at: 4, to: newValue) }
         }
 
         /// Interrupt polarity active high, or active low on interrupt pad INT2.
         ///
         /// * 0 — Active low (reset value)
         /// * 1 — Active high
-        public var interrupt2Active: InterruptActive {
+        public var int2Polarity: InterruptPolarity {
             get { getBit(at: 1) }
             set { setBit(at: 1, to: newValue) }
         }
@@ -501,7 +707,7 @@ extension MPL3115A2 {
         /// Push-pull/open drain selection on interrupt pad INT2.
         /// * 0 — Internal pullup (reset value)
         /// * 1 — Open drain
-        public var interrupt2Mode: InterruptMode {
+        public var int2Mode: InterruptMode {
             get { getBit(at: 0) }
             set { setBit(at: 0, to: newValue) }
         }
@@ -509,48 +715,16 @@ extension MPL3115A2 {
 
     public struct InterruptEnable: I2CMutableRegisterValue {
 
-        public static let address: UInt8 = 0x29
-
         public var registerValue: UInt8
 
         public init(registerValue: UInt8) {
             self.registerValue = registerValue
         }
 
-        /// Temperature change interrupt
-        public var temperatureChange: Enabled {
-            get { getBit(at: 0) }
-            set { setBit(at: 0, to: newValue) }
-        }
-
-        /// Pressure change interrupt
-        public var pressureChange: Enabled {
-            get { getBit(at: 1) }
-            set { setBit(at: 1, to: newValue) }
-        }
-
-        /// Pressure threshold interrupt
-        public var pressureThreshold: Enabled {
-            get { getBit(at: 2) }
-            set { setBit(at: 2, to: newValue) }
-        }
-
-        /// Temperature threshold interrupt
-        public var temperatureThreshold: Enabled {
-            get { getBit(at: 3) }
-            set { setBit(at: 3, to: newValue) }
-        }
-
-        /// Temperature window interrupt
-        public var temperatureWindow: Enabled {
-            get { getBit(at: 4) }
-            set { setBit(at: 4, to: newValue) }
-        }
-
-        /// Pressure window interrupt
-        public var pressureWindow: Enabled {
-            get { getBit(at: 5) }
-            set { setBit(at: 5, to: newValue) }
+        /// Data ready interrupt
+        public var dataReady: Enabled {
+            get { getBit(at: 7) }
+            set { setBit(at: 7, to: newValue) }
         }
 
         /// FIFO interrupt
@@ -559,10 +733,40 @@ extension MPL3115A2 {
             set { setBit(at: 6, to: newValue) }
         }
 
-        /// Data ready interrupt
-        public var dataReady: Enabled {
-            get { getBit(at: 7) }
-            set { setBit(at: 7, to: newValue) }
+        /// Pressure window interrupt
+        public var pressureWindow: Enabled {
+            get { getBit(at: 5) }
+            set { setBit(at: 5, to: newValue) }
+        }
+
+        /// Temperature window interrupt
+        public var temperatureWindow: Enabled {
+            get { getBit(at: 4) }
+            set { setBit(at: 4, to: newValue) }
+        }
+
+        /// Pressure threshold interrupt
+        public var pressureThreshold: Enabled {
+            get { getBit(at: 3) }
+            set { setBit(at: 3, to: newValue) }
+        }
+
+        /// Temperature threshold interrupt
+        public var temperatureThreshold: Enabled {
+            get { getBit(at: 2) }
+            set { setBit(at: 2, to: newValue) }
+        }
+
+        /// Pressure change interrupt
+        public var pressureChange: Enabled {
+            get { getBit(at: 1) }
+            set { setBit(at: 1, to: newValue) }
+        }
+
+        /// Temperature change interrupt
+        public var temperatureChange: Enabled {
+            get { getBit(at: 0) }
+            set { setBit(at: 0, to: newValue) }
         }
     }
 
@@ -573,48 +777,16 @@ extension MPL3115A2 {
 
     public struct InterruptConfig: I2CMutableRegisterValue {
 
-        public static let address: UInt8 = 0x2A
-
         public var registerValue: UInt8
 
         public init(registerValue: UInt8) {
             self.registerValue = registerValue
         }
 
-        /// Temperature change interrupt
-        public var temperatureChange: InterruptSelector {
-            get { getBit(at: 0) }
-            set { setBit(at: 0, to: newValue) }
-        }
-
-        /// Pressure change interrupt
-        public var pressureChange: InterruptSelector {
-            get { getBit(at: 1) }
-            set { setBit(at: 1, to: newValue) }
-        }
-
-        /// Temperature threshold interrupt
-        public var temperatureThreshold: InterruptSelector {
-            get { getBit(at: 2) }
-            set { setBit(at: 2, to: newValue) }
-        }
-
-        /// Pressure threshold interrupt
-        public var pressureThreshold: InterruptSelector {
-            get { getBit(at: 3) }
-            set { setBit(at: 3, to: newValue) }
-        }
-
-        /// Temperature window interrupt
-        public var temperatureWindow: InterruptSelector {
-            get { getBit(at: 4) }
-            set { setBit(at: 4, to: newValue) }
-        }
-
-        /// Pressure window interrupt
-        public var pressureWindow: InterruptSelector {
-            get { getBit(at: 5) }
-            set { setBit(at: 5, to: newValue) }
+        /// Data ready interrupt
+        public var dataReady: InterruptSelector {
+            get { getBit(at: 7) }
+            set { setBit(at: 7, to: newValue) }
         }
 
         /// FIFO interrupt
@@ -623,10 +795,40 @@ extension MPL3115A2 {
             set { setBit(at: 6, to: newValue) }
         }
 
-        /// Data ready interrupt
-        public var dataReady: InterruptSelector {
-            get { getBit(at: 7) }
-            set { setBit(at: 7, to: newValue) }
+        /// Pressure window interrupt
+        public var pressureWindow: InterruptSelector {
+            get { getBit(at: 5) }
+            set { setBit(at: 5, to: newValue) }
+        }
+
+        /// Temperature window interrupt
+        public var temperatureWindow: InterruptSelector {
+            get { getBit(at: 4) }
+            set { setBit(at: 4, to: newValue) }
+        }
+
+        /// Pressure threshold interrupt
+        public var pressureThreshold: InterruptSelector {
+            get { getBit(at: 3) }
+            set { setBit(at: 3, to: newValue) }
+        }
+
+        /// Temperature threshold interrupt
+        public var temperatureThreshold: InterruptSelector {
+            get { getBit(at: 2) }
+            set { setBit(at: 2, to: newValue) }
+        }
+
+        /// Pressure change interrupt
+        public var pressureChange: InterruptSelector {
+            get { getBit(at: 1) }
+            set { setBit(at: 1, to: newValue) }
+        }
+
+        /// Temperature change interrupt
+        public var temperatureChange: InterruptSelector {
+            get { getBit(at: 0) }
+            set { setBit(at: 0, to: newValue) }
         }
     }
 }

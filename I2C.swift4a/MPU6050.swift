@@ -94,8 +94,8 @@ extension MPU6050 {
     /// pin sampling and the Digital Low Pass Filter (DLPF) setting
     /// for both the gyroscopes and accelerometers.
     public var config: Config {
-        get { read(from: Config.address) }
-        set { write(to: Config.address, value: newValue) }
+        get { read(from: 0x1A) }
+        set { write(to: 0x1A, value: newValue) }
     }
 
     /// Gyroscope Output Rate = 8kHz when the DLPF is disabled
@@ -107,9 +107,6 @@ extension MPU6050 {
 
     /// Describes the `CONFIG` register (`0x1A`) contents.
     public struct Config: I2CMutableRegisterValue {
-        /// The register address
-        public static let address: UInt8 = 0x1A
-
         /// The raw register value.
         public var registerValue: UInt8
 
@@ -233,20 +230,18 @@ extension MPU6050 {
 extension MPU6050 {
     /// Configures the gyroscope.
     public var gyroConfig: GyroConfig {
-        get { read(from: GyroConfig.address) }
-        set { write(to: GyroConfig.address, value: newValue) }
+        get { read(from: 0x1B) }
+        set { write(to: 0x1B, value: newValue) }
     }
 
     // Configures the accelerometer.
     public var accelConfig: AccelConfig {
-        get { read(from: AccelConfig.address) }
-        set { write(to: AccelConfig.address, value: newValue) }
+        get { read(from: 0x1C) }
+        set { write(to: 0x1C, value: newValue) }
     }
 }
 
 public struct GyroConfig: I2CMutableRegisterValue {
-
-    public static let address: UInt8 = 0x1B
 
     public var registerValue: UInt8
 
@@ -294,8 +289,6 @@ public struct GyroConfig: I2CMutableRegisterValue {
 
 public struct AccelConfig: I2CMutableRegisterValue {
 
-    public static let address: UInt8 = 0x1C
-
     public var registerValue: UInt8
 
     public init(registerValue: UInt8) {
@@ -339,17 +332,17 @@ public struct AccelConfig: I2CMutableRegisterValue {
 
 extension MPU6050 {
     public var interruptConfig: InterruptConfig {
-        get { read(from: InterruptConfig.address) }
-        set { write(to: InterruptConfig.address, value: newValue) }
+        get { read(from: 0x37) }
+        set { write(to: 0x37, value: newValue) }
     }
 
     public var interruptEnable: InterruptEnable {
-        get { read(from: InterruptEnable.address) }
-        set { write(to: InterruptEnable.address, value: newValue) }
+        get { read(from: 0x38) }
+        set { write(to: 0x38, value: newValue) }
     }
 
     public var interruptStatus: InterruptStatus {
-        read(from: InterruptStatus.address)
+        read(from: 0x3A)
     }
 }
 
@@ -376,8 +369,6 @@ extension MPU6050 {
 /// Section 7.11 and 7.13 of the MPU6000/MPU-6050 Product Specification
 /// document.
 public struct InterruptConfig: I2CMutableRegisterValue {
-    public static let address: UInt8 = 0x37
-
     public var registerValue: UInt8
 
     public init(registerValue: UInt8) {
@@ -466,8 +457,6 @@ public struct InterruptConfig: I2CMutableRegisterValue {
 ///
 /// Bits 2 and 1 are reserved.
 public struct InterruptEnable: I2CMutableRegisterValue {
-    public static let address: UInt8 = 0x38
-
     public var registerValue: UInt8
 
     public init(registerValue: UInt8) {
@@ -497,8 +486,6 @@ public struct InterruptEnable: I2CMutableRegisterValue {
 ///
 /// Bits 2 and 1 are reserved.
 public struct InterruptStatus: I2CRegisterValue {
-
-    public static let address: UInt8 = 0x3A
 
     public var registerValue: UInt8
 
@@ -681,19 +668,20 @@ extension MPU6050 {
 extension MPU6050 {
     /// Register 104: Signal Path Reset
     public var signalPathReset: SignalPathReset {
-        get { read(from: SignalPathReset.address) }
-        set { write(to: SignalPathReset.address, value: newValue) }
+        get { read(from: 0x68) }
+        set { write(to: 0x68, value: newValue) }
     }
 
     /// Register 106: User Control
     public var userControl: UserControl {
-        get { read(from: UserControl.address) }
-        set { write(to: UserControl.address, value: newValue) }
+        get { read(from: 0x6A) }
+        set { write(to: 0x6A, value: newValue) }
     }
 
+    /// `PowerManagement` combines both Power Management registers (107 and 108).
     public var powerManagement: PowerManagement {
-        get { read(from: PowerManagement.address) }
-        set { write(to: PowerManagement.address, value: newValue) }
+        get { read(from: 0x6B...0x6C) }
+        set { write(to: 0x6B...0x6C, value: newValue) }
     }
 }
 
@@ -709,7 +697,6 @@ extension MPU6050 {
 ///
 /// Bits 7 to 3 are reserved.
 public struct SignalPathReset: I2CMutableRegisterValue {
-    public static let address: UInt8 = 0x68
 
     public var registerValue: UInt8
 
@@ -748,7 +735,6 @@ public struct SignalPathReset: I2CMutableRegisterValue {
 ///
 /// Bits 7 and 3 are reserved.
 public struct UserControl: I2CMutableRegisterValue {
-    public static let address: UInt8 = 0x6A
 
     public var registerValue: UInt8
 
@@ -840,8 +826,6 @@ public struct UserControl: I2CMutableRegisterValue {
 /// The user can put individual accelerometer and gyroscopes axes into standby mode by using this register. If the device is using a gyroscope
 /// axis as the clock source and this axis is put into standby mode, the clock source will automatically be changed to the internal 8MHz oscillator.
 public struct PowerManagement: I2CMutableRegisterBlock {
-
-    public static let address: ClosedRange<UInt8> = 0x6B...0x6C
 
     public var register1: UInt8
     public var register2: UInt8

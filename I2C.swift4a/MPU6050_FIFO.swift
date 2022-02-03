@@ -35,14 +35,12 @@ extension MPU6050 {
      * Please refer to Registers 49 to 53 for further information regarding Slave 4 usage.
      */
     public var fifoEnable: FifoEnable {
-        get { read(from: FifoEnable.address) }
-        set { write(to: FifoEnable.address, value: newValue) }
+        get { read(from: 0x23) }
+        set { write(to: 0x23, value: newValue) }
     }
 }
 
 public struct FifoEnable: I2CMutableRegisterValue {
-
-    public static let address: UInt8 = 0x23
 
     /// The register value.
     public var registerValue: UInt8

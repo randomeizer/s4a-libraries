@@ -11,8 +11,8 @@ import AVR
 
 extension MPU6050 {
     public var i2CMasterControl: I2CMasterControl {
-        get { read(from: I2CMasterControl.address) }
-        set { write(to: I2CMasterControl.address, value: newValue) }
+        get { read(from: 0x24) }
+        set { write(to: 0x24, value: newValue) }
     }
 }
 
@@ -39,8 +39,6 @@ extension MPU6050 {
 ///
 /// The I2C_MST_P_NSR bit configures the I2 C Master’s transition from one slave read to the next slave read. If the bit equals 0, there will be a restart between reads. If the bit equals 1, there will be a stop followed by a start of the following read. When a write transaction follows a read transaction, the stop followed by a start of the successive write will be always used.
 public struct I2CMasterControl: I2CMutableRegisterValue {
-
-    public static let address: UInt8 = 0x24
 
     public var registerValue: UInt8
 
@@ -180,41 +178,36 @@ public struct I2CMasterControl: I2CMutableRegisterValue {
 public extension MPU6050 {
     /// Returns a `Slave` instance pointing at the Slave 0 registers.
     var slave0: Slave {
-        get { read(from: Slave.address0) }
-        set { write(to: Slave.address0, value: newValue) }
+        get { read(from: 0x25...0x27) }
+        set { write(to: 0x25...0x27, value: newValue) }
     }
 
     /// Returns a `Slave` instance pointing at the Slave 1 registers.
     var slave1: Slave {
-        get { read(from: Slave.address1) }
-        set { write(to: Slave.address1, value: newValue) }
+        get { read(from: 0x28...0x2A) }
+        set { write(to: 0x28...0x2A, value: newValue) }
     }
 
     /// Returns a `Slave` instance pointing at the Slave 2 registers.
     var slave2: Slave {
-        get { read(from: Slave.address2) }
-        set { write(to: Slave.address2, value: newValue) }
+        get { read(from: 0x2B...0x2D) }
+        set { write(to: 0x2B...0x2D, value: newValue) }
     }
 
     /// Returns a `Slave` instance pointing at the Slave 3 registers.
     var slave3: Slave {
-        get { read(from: Slave.address3) }
-        set { write(to: Slave.address3, value: newValue) }
+        get { read(from: 0x2E...0x30) }
+        set { write(to: 0x2E...0x30, value: newValue) }
     }
 
     /// Returns a `Slave` instance pointing at the Slave 4 registers.
     var slave4: Slave4 {
-        get { read(from: Slave4.address) }
-        set { write(to: Slave4.address, value: newValue) }
+        get { read(from: 0x31...0x35) }
+        set { write(to: 0x31...0x35, value: newValue) }
     }
 
     /// Configures Slave 0-3 connections.
     struct Slave: I2CMutableRegisterBlock {
-
-        static let address0: ClosedRange<UInt8> = 0x25...0x27
-        static let address1: ClosedRange<UInt8> = 0x28...0x2A
-        static let address2: ClosedRange<UInt8> = 0x2B...0x2D
-        static let address3: ClosedRange<UInt8> = 0x2E...0x30
 
         /// Contains read/write bit and the slave's 7-bit address.
         private var address: UInt8
@@ -328,8 +321,6 @@ public extension MPU6050 {
     /// Slave 4 transactions are performed after Slave 0, 1, 2 and 3 transactions have been completed. Thus the maximum rate
     /// for Slave 4 transactions is determined by the Sample Rate as defined in Register 25.
     struct Slave4: I2CMutableRegisterBlock {
-
-        public static let address: ClosedRange<UInt8> = 0x31...0x35
 
         // Contains the read/write bit and the 7-bit slave address.
         private var address: UInt8
