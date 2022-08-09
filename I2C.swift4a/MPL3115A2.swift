@@ -9,6 +9,11 @@
 
 import AVR
 
+/// Loops, waiting until the `done` closure returns `true`.
+///
+/// - Parameters:
+///  - done: The closure to call to check if the loop should continue.
+///  - timeout: The maximum time to wait for the `done` closure to return `true`. Defaults to `10` milliseconds.
 fileprivate func waitUntil(_ done: () -> Bool, delaying ms: () -> UInt16 = { 10 }) {
     while !done() {
         delay(milliseconds: ms())
@@ -21,16 +26,27 @@ public struct MPL3115A2: I2CSlaveNode {
 }
 
 extension MPL3115A2 {
+    /// Describes a value which can be ``enabled`` or ``disabled``
     public enum Enabled: UInt8 {
         case disabled = 0
         case enabled = 1
     }
+
+    /// Describes what to do next.
+    public enum Next {
+        case `continue`
+        case done
+    }
 }
 
 extension MPL3115A2 {
+    /// The read address register.
     static let readAddress: UInt8 = 0xC1
+
+    /// The write address register.
     static let writeAddress: UInt8 = 0xC0
 
+    /// Used to check if the sensor is connected.
     static let whoamiID: UInt8 = 0xC4
 
     /// Once I2C has been set up, check that the sensor is available and connected.
@@ -47,11 +63,11 @@ extension MPL3115A2 {
     /// Sets up the sensor for continuous altitude readings by polling.
     ///
     /// - Parameter handler: A closure that is called when a new altitude reading is available.
-    ///                      Returns `true` to continue polling, `false` to stop.
+    ///                      Returns `.continue` to continue polling, `.done` to stop.
     ///
     /// - Note: The value is a 20-bit signed integer with a fractional part,
     ///         as a Q16.4 fixed-point format.
-    public mutating func altitudeViaPolling(to handler: (Float) -> Bool) {
+    public mutating func altitudeViaPolling(to handler: (Float) -> Next) {
         control(
             mode: .altimeter,
             oversampleRatio: .x128
@@ -63,8 +79,8 @@ extension MPL3115A2 {
         )
         control.active = true
 
-        var active = true
-        while active {
+        var next: Next = .continue
+        while next == .continue {
             // wait for the altimeter to be ready
             waitUntil { dataReadyStatus.pressureDataReady }
 
@@ -73,7 +89,7 @@ extension MPL3115A2 {
             _ = temperatureData
 
             if let altitude = altitude {
-                active = handler(altitude)
+                next = handler(altitude)
             }
         }
     }
@@ -81,11 +97,13 @@ extension MPL3115A2 {
     /// Sets up the sensor for continuous altitude readings by checking interrupts.
     ///
     /// - Parameter handler: A closure that is called when a new altitude reading is available.
-    ///                      Returns `true` to continue polling, `false` to stop.
+    ///                      Returns `.continue` to continue polling, `.done` to stop.
+    /// - Parameter checkInterrupt: A closure that returns `true` if the interrupt is currently set. Should not block.
+    /// - Parameter clearInterrupt: A closure that is called if the interrupt should be cleared.
     ///
     /// - Note: The value is a 20-bit signed integer with a fractional part,
     ///         as a Q16.4 fixed-point format.
-    public mutating func altitudeViaInterrupt(to handler: (Float) -> Bool, checkInterrupt: () -> Bool, clearInterrupt: () -> Void) {
+    public mutating func altitudeViaInterrupt(to handler: (Float) -> Next, checkInterrupt: () -> Bool, clearInterrupt: () -> Void) {
         control(
             mode: .altimeter,
             oversampleRatio: .x128
@@ -108,8 +126,8 @@ extension MPL3115A2 {
 
         control.active = true
 
-        var active = true
-        while active {
+        var next: Next = .continue
+        while next == .continue {
             // Check for Interrupt on pin 2
             waitUntil { checkInterrupt() }
 
@@ -119,11 +137,10 @@ extension MPL3115A2 {
             }
 
             // read both the altitude and temperature, to clear the registers
-            let altitude = self.altitude
             _ = temperatureData
 
             if let altitude = altitude {
-                active = handler(altitude)
+                next = handler(altitude)
             }
         }
     }
@@ -131,11 +148,11 @@ extension MPL3115A2 {
     /// Sets up the sensor for continuous temperature readings by polling.
     ///
     /// - Parameter handler: A closure that is called when a new altitude reading is available.
-    ///                      Returns `true` to continue polling, `false` to stop.
+    ///                      Returns `.continue` to continue polling, `.done` to stop.
     ///
     /// - Note: The value is a 20-bit signed integer with a fractional part,
     ///         as a Q16.4 fixed-point format.
-    public mutating func temperatureViaPolling(to handler: (Float) -> Bool) {
+    public mutating func temperatureViaPolling(to handler: (Float) -> Next) {
         control(
             mode: .altimeter,
             oversampleRatio: .x128
@@ -147,55 +164,42 @@ extension MPL3115A2 {
         )
         control.active = true
 
-        var active = true
-        while active {
+        var next: Next = .continue
+        while next == .continue {
             // wait for the altimeter to be ready
             waitUntil { dataReadyStatus.temperatureDataReady }
 
             // read both the altitude and temperature, to clear the registers
             _ = altitudeData
-            _ = temperature
-
-            active = handler(temperature)
+            next = handler(temperature)
         }
     }
 
 
     /// Get the current pressure from a running sensor.
-    public var currentPressure: Float {
-        let pressureDataReadyFlag: UInt8 = 0x04
-
+    public mutating func readCurrentPressure() -> Float {
         // start the altimeter, turn on the analog systems, ADC, and set oversampling rate to 128x, read as pressure
-        blockingWriteControlReg1(value: 0x39)
-        blockingWaitForStatusFlag(flag: pressureDataReadyFlag)
+        control(
+            mode: .barometer,
+            oversampleRatio: .x128,
+            active: true
+        )
+        waitUntil { dataReadyStatus.pressureDataReady }
 
-        let rawValue: UInt32 = read(from: 0x01...0x03)
-        return Float(rawValue>>4)/4.0
+        return pressure ?? 0
     }
 
     /// Get the current temperature from a running sensor.
-    public var currentTemperature: Float {
-        let temperatureDataReadyFlag: UInt8 = 0x02
-
+    public mutating func readCurrentTemperature() -> Float {
         // start the altimeter, turn on the analog systems, ADC, and set oversampling rate to 128x
+        control(
+            mode: .barometer,
+            oversampleRatio: .x128,
+            active: true
+        )
+        waitUntil { dataReadyStatus.temperatureDataReady }
 
-        blockingWriteControlReg1(value: 0x39)
-        blockingWaitForStatusFlag(flag: temperatureDataReadyFlag)
-
-        let rawValue: UInt16 = read(from: 0x04...0x05)
-        return Float(rawValue)/16.0
-    }
-
-    private func blockingWriteControlReg1(value: UInt8) {
-        write(to: 0x26, value: value)
-    }
-
-    private func blockingWaitForStatusFlag(flag: UInt8) {
-        var status: UInt8 = read(from: 0x0)
-        while status & flag == 0 {
-            delay(milliseconds: 10)
-            status = read(from: 0x0)
-        }
+        return temperature
     }
 }
 
@@ -203,7 +207,7 @@ extension MPL3115A2 {
     /// The aliases allow the STATUS register to be read easily before reading the current pressure/altitude or
     /// temperature data, the delta pressure/altitude or temperature data, or the FIFO data, using the register
     /// address auto-incrementing mechanism.
-    public var sensorStatus: UInt8 {
+    public var sensorStatus: DataReadyStatus {
         get { read(from: 0x0) }
     }
 

@@ -6,6 +6,7 @@
 
 import AVR
 
+/// A namespace to collect `I2C`-related classes and functions together.
 public enum I2C {}
 
 extension I2C {
@@ -178,7 +179,7 @@ public extension I2CSlaveNode {
     /// Writes the provided `value` to the specified `register`.
     ///
     /// - Parameter register: The register to write into.
-    /// - Parameter value: The
+    /// - Parameter value: The actual ``I2CRegisterValue`` to write.
     @inlinable
     func write(to register: UInt8, value: I2CRegisterValue) {
         blockingWriteSingleI2CRegister(slaveAddress: address.addressValue, register: register, value: value.registerValue)
