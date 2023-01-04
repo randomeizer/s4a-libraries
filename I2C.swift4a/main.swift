@@ -20,7 +20,7 @@ func testMPL3115A2() {
     print("Testing MPL3115A2")
 
     var dev = MPL3115A2()
-    
+
     // Just run it once
     dev.altitudeViaPolling { altitude in
         print("Altitude: ")
